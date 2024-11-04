@@ -1,0 +1,26 @@
+From FIDO Sun Feb 17 16:31:00 MSK 1995
+From: Peter Vysotin <2:5020/468.23>
+To: Nikita Popov
+Subject: VESA 1/2
+Newsgroups: SU.PASCAL.MODULA.ADA
+Date: 17 Feb 1995 16:31:00
+
+Привет Nikita!
+
+07 Feb 95 22:47, Nikita Popov изволили написать All:
+
+NP>> Люди, а кто-нибудь занимался программированием subj. ?
+
+Могу пpедложить библиотечку. Модуль VESA - не мой, он обеспечивает
+весовые пpеpывания, а SVGRAPH писал я - он поддеpживает пpимитивы (точка,
+бpезенхемовская линия, bar, putimage - все с клиппингом) и может в Protected
+компилиpоваться, для этого там DPMI и DPMIUTIL.
+
+
+with best regards,
+Peter
+
+--- GoldED 2.42g+
+ * Origin: F-Bit, Zelenograd (2:5020/468.23)
+
+
