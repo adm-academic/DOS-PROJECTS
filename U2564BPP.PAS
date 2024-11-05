@@ -48,9 +48,9 @@ unit U2564BPP;
 interface
 
 procedure DIRTY_TESTS;
-Procedure SetRGBPalette_Array(Index,Count:Integer;var RGB);
-Procedure GetRGBPalette(Index:Integer;var R,G,B:Byte);
-Procedure GetRGBPalette_Array(Index,Count:Integer;var RGB);
+Procedure SetRGBPalette_Array( Index,Count:Integer;var RGB );
+Procedure GetRGBPalette( Index:Integer;var R,G,B:Byte );
+Procedure GetRGBPalette_Array( Index,Count:Integer;var RGB );
 
 
 implementation
@@ -61,40 +61,47 @@ const
   x=1;
 
 type
-   T_Buff_RGB_BYTE = record
+   T_Buff_RGB_DESC = record
                     R: byte;
                     G: byte;
                     B: byte;
                    end;
-   T_Buff_RGBPalette_16  = Array[0..15] of T_Buff_RGB_BYTE;
-   T_Buff_RGBPalette_256 = Array[0..255] of T_Buff_RGB_BYTE;
+   T_Buff_RGBPalette_16  = Array[0..15] of T_Buff_RGB_DESC;
+   T_Buff_RGBPalette_256 = Array[0..255] of T_Buff_RGB_DESC;
 
 const
    Default_VGA_Palette : T_Buff_RGBPAlette_16  =
    (
-    {0}   ( R:$00; G:$00; B:$00 ),
-    {1}   ( R:$00; G:$00; B:$2A ),
-    {2}   ( R:$00; G:$2A; B:$00 ),
-    {3}   ( R:$00; G:$2A; B:$2A ),
-    {4}   ( R:$2A; G:$00; B:$00 ),
-    {5}   ( R:$2A; G:$00; B:$2A ),
-    {6}   ( R:$2A; G:$15; B:$00 ),
-    {7}   ( R:$2A; G:$2A; B:$2A ),
-    {8}   ( R:$15; G:$15; B:$15 ),
-    {9}   ( R:$15; G:$15; B:$3F ),
-    {10}  ( R:$15; G:$3F; B:$15 ),
-    {11}  ( R:$15; G:$3F; B:$3F ),
-    {12}  ( R:$3F; G:$15; B:$15 ),
-    {13}  ( R:$3F; G:$15; B:$3F ),
-    {14}  ( R:$3F; G:$3F; B:$15 ),
-    {15}  ( R:$3F; G:$3F; B:$3F )
+    {0} {Black}       ( R:$00; G:$00; B:$00 ),
+    {1} {Blue}        ( R:$00; G:$00; B:$2A ),
+    {2} {Green}       ( R:$00; G:$2A; B:$00 ),
+    {3} {Cyan}        ( R:$00; G:$2A; B:$2A ),
+    {4} {Red}         ( R:$2A; G:$00; B:$00 ),
+    {5} {Magenta}     ( R:$2A; G:$00; B:$2A ),
+    {6} {Brown}       ( R:$2A; G:$15; B:$00 ),
+    {7} {LightGray}   ( R:$2A; G:$2A; B:$2A ),
+    {8} {DarkGray}    ( R:$15; G:$15; B:$15 ),
+    {9} {LightBlue}   ( R:$15; G:$15; B:$3F ),
+    {10}{LIghtGreen}  ( R:$15; G:$3F; B:$15 ),
+    {11}{LightCyan}   ( R:$15; G:$3F; B:$3F ),
+    {12}{LightRed}    ( R:$3F; G:$15; B:$15 ),
+    {13}{LightMagenta}( R:$3F; G:$15; B:$3F ),
+    {14}{Yellow}      ( R:$3F; G:$3F; B:$15 ),
+    {15}{White}       ( R:$3F; G:$3F; B:$3F )
    );
 
 var
+  Buff_RGBPalette_16: Array[0..15] of T_Buff_RGB_DESC;
+  Buff_RGBPalette_256: Array[0..255] of T_Buff_RGB_DESC;
 
-  Buff_RGBPalette_16: Array[0..15] of T_Buff_RGB_BYTE;
-  Buff_RGBPalette_256: Array[0..255] of T_Buff_RGB_BYTE;
-
+type
+  { Цветовой блок всегда содержит 16 цветов. }
+  T_Color_Block = record
+     Palette : T_Buff_RGBPalette_16; { палитра из 16-и цветов }
+     Case CB_Type: ( CB_Interface, CB_Bitmap ) of
+      CB_Interface : (   );
+      CB_Bitmap : ( Bitmap_name : string );
+  end;
 {
 ===========================================================================
 }
@@ -117,7 +124,7 @@ end;
 { устанавливает массив цветов в палитру видеокарты }
 { index - индекс начального цвета в палитре видеокарты }
 { count - количесво устанавливаемых цветов }
-{ RGB - массив устанавливаемых цветов }
+{ RGB   - массив устанавливаемых цветов }
 Procedure SetRGBPalette_Array(Index,Count:Integer;var RGB);assembler;
 asm
  LES DX,RGB
@@ -127,7 +134,8 @@ asm
  INT 10H
 end;
 
-{ копирует в переменную RGB описания Count штук цветов начиная с индекса Index }
+{ копирует в переменную RGB описания Count штук цветов начиная
+  с индекса Index }
 Procedure GetRGBPalette_Array(Index,Count:Integer;var RGB);assembler;
 asm
  MOV BX,Index
@@ -146,7 +154,7 @@ end;
 procedure  Clear_Color_Space;
 var
  i,j : integer;
- gray_fill: T_Buff_RGB_BYTE;
+ gray_fill: T_Buff_RGB_DESC;
 begin
   { первые 16 цветов возьмём из константной таблицы цветов VGA }
   for i:=0 to 15 do
@@ -433,15 +441,17 @@ end;
 
 
 procedure DIRTY_TESTS;
+var
+  i,j : integer;
 begin
  writeln('Start Dirty U2564BPP tests... ');
 
  { ### нужно проверять чтобы был включен видеорежим 256-цветов ### }
  if (not Is_Mode_256_Colors) then
  begin
- closegraph;
- writeln('Graph Mode must be 256 colors !!!');
- halt ( 0 );
+   closegraph;
+   writeln('Graph Mode must be 256 colors !!!');
+   halt ( 0 );
  end;
 
 
@@ -463,6 +473,8 @@ begin
  Clear_Color_Space;
  cleardevice;
  paint_4bpp_BMP_directly('leo2.bmp',0,0);
+
+
 
 end;
 
