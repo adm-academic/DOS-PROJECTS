@@ -1,10 +1,14 @@
 program VGA_Mode_test;
-uses crt, graph, sysutils;
+uses crt, graph, go32, sysutils;
+{$GOTO ON}
+label
+   again;
 
 var
   d,m : smallint;
   i,j: integer;
   xx, yy : smallint;
+  ii : longint;
 
 begin
    d:= 6;
@@ -14,13 +18,27 @@ begin
   { setactivepage(0);
    setvisualpage(0);
   }
-
-   randomize;
-   for yy:=0 to 200-1 do
-    for xx:=0 to 320-1 do
+  randomize;
+  repeat
+    again :
+    for ii := 0 to 320*200-1 do
     begin
-     PutPixel( xx, yy, random(GetMaxColor) );
+       Mem[ SegA000 : ii ] := random( 255 );
     end;
+    settextstyle( 0,HorizDir,2 );
+    setcolor( white );
+    outtextxy( 5, 20, 'ENTER for Continue');
+    delay( 15 );
+  until keypressed;
+  if readkey <> #13 then
+    goto again;
+
+
+  for ii := 0 to 320*200-1 do
+    begin
+       Mem[ SegA000 : ii ] := random( 255 );
+    end;
+
 
    settextstyle( 0,HorizDir,2);
    setcolor( white );
