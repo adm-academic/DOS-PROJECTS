@@ -1,0 +1,42 @@
+Program gmodeinfo;
+
+{$mode objfpc}{$H+}
+{$APPTYPE CONSOLE}
+
+Uses
+    Crt, Mouse, Graph, SysUtils;
+
+Var
+    ModeInfo: PModeInfo; // Сюда будет заносится информация о видеорежимах
+    Rez: String;
+    cnt: integer;
+
+Begin
+    ModeInfo:=QueryAdapterInfo;
+    If ModeInfo=NIL Then
+        WriteLn('Не удалось получить информацию у видеоадаптера...')
+    Else
+    Begin
+        WriteLn('№ драйвера ', '№ режима ', 'Разрешение ', 'Цветов ');
+        WriteLn('------------------------------------------------------------');
+        cnt := 0;
+        While ModeInfo^.Next<>NIL Do
+        Begin
+            Write(ModeInfo^.DriverNumber:10);
+            Write(ModeInfo^.ModeNumber:9);
+            // Write(' "'+ModeInfo^.ModeName+'"':22);
+            Rez:=IntToStr(ModeInfo^.MaxX+1)+'x'+IntToStr(ModeInfo^.MaxY+1);
+            Write(Rez:11);
+            WriteLn(ModeInfo^.MaxColor:7);
+            ModeInfo:=ModeInfo^.Next;
+            if cnt>=19 then
+              begin
+              cnt:=0;
+              readln;
+              end
+             else
+              cnt := cnt + 1;
+        End;
+        ReadLn;
+    End;
+End.
