@@ -1,10 +1,14 @@
 
 @echo "CLEARING TRASH FILES..."
 
+del *.o
+del *.O
 del *.BAK
 del *.bak
 del *.TPU
 del *.tpu
+del *.tpp
+del *.TPP
 
 del SPRUCHRS\*.TPU
 del SPRUCHRS\*.tpu
