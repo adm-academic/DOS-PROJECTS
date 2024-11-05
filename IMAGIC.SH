@@ -3,3 +3,7 @@
 convert cenbibl2.jpg -resize 320x200 -colors 16 ppm:- | ppmtobmp -bpp=4 > cenbibl2.bmp
 
 convert cenbibl2.jpg -colors 16 ppm:- | ppmtobmp -bpp=4 > cenbibl2.bmp
+
+
+convert LEO.BMP -colors 16 ppm:- | ppmtobmp -bpp=4 > LEO2.BMP
+
