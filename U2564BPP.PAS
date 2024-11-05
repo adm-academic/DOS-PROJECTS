@@ -90,6 +90,7 @@ const
     {15}{White}       ( R:$3F; G:$3F; B:$3F )
    );
 
+
 var
   Buff_RGBPalette_16: Array[0..15] of T_Buff_RGB_DESC;
   Buff_RGBPalette_256: Array[0..255] of T_Buff_RGB_DESC;
@@ -483,12 +484,15 @@ end;
 begin
    Writeln;
    Writeln('Used Unit "U2564BPP.PAS" ');
-   Writeln('Which manages 4bpp color spaces in a ',
-           'total space of 256 colors.');
+   Writeln('Which manages 4bpp (16 colors) color spaces ',
+           'in a total space of 256 colors.');
    {$IFDEF DPMI}
-     Writeln('ERROR. Only Real Mode Processor SUPPORTED !!!');
-     halt(0);
+     Writeln('ATTENTION ! Unit U2564BPP runs in "16-BIT PROTECTED MODE" !');
+   {$ELSE}
+     Writeln('ATTENTION ! Unit U2564BPP runs in "REAL MODE" !');
    {$ENDIF}
+   Writeln('Press ENTER for continue loading program !');
+   readln;
 end.
 
 
