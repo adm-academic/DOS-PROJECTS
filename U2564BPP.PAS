@@ -10,7 +10,7 @@ unit U2564BPP;
   которая не пересекается с палитрами других изображений.
   Первые 16 цветов в палитре (0-15) натсраиваются и используются
   для отрисовки разных элементов интефейса, и коды цветов
-  берутся из классичской палитры Turbo Pascal 16-Colors;
+  берутся из классической палитры Turbo Pascal 16-Colors;
 
 
    # отрисовку файлов BMP 256 colors +-
@@ -22,16 +22,15 @@ unit U2564BPP;
        используя встроенные цвета BP7 BGI  +
      @ Очистка всей палитры +
      @ Очистка одного цветового блока +
-     @ Зарезервировать блок N для интерфейса ---
-     @ Зарезервировать блок N для изображения ---
+     @ Изменить тип цветового блока (Free,Interface,Bitmap) +
+     @ Освободить и очистить блок N +
+     @ Блок N занят-нет? +
+     @ Получить число свободных боков +
+     @ Получить номер следующего свободного блока +
      @ Загрузить 4bpp Bitmap в блок N,
        имя битмапа использовать как индекс для
        управления в дальнейшем ---
-     @ Освободить и очистить блок N ---
-     @ Получить следующий свободный блок ---
-     @ Получить число свободных боков ---
      @ Очистить блок типа Bitmap по имени ---
-     @ Блок N занят-нет? ---
      @ Заменить Bitmap в блоке N на новый ---
      @ Для любого блока N получить его 16-цветную палитру ---
      @ Для переданного 256-индекса вернуть его RGB ---
@@ -40,27 +39,9 @@ unit U2564BPP;
      @ MapFrom256To4bb - для абсолютного индекса получить ---
        N цветового блока и относительный индекс,
        а также, если есть, то имя загруженного битмапа
-     @
-
-
 
 }
 interface
-procedure DIRTY_TESTS;
-
-
-function  Initialize_U2564BPP : boolean;
-procedure Clear_Colors_Space;
-procedure Clear_Colors_Block(N:byte);
-Procedure GetRGBPalette( Index:Integer;var R,G,B:Byte );
-Procedure SetRGBPalette_Array( Index,Count:Integer;var RGB );
-Procedure GetRGBPalette_Array( Index,Count:Integer;var RGB );
-
-
-implementation
-
-uses crt, graph, dos;
-
 
 type
    T_Buff_RGB_DESC = record { для единичного элмента палитры VGA  }
@@ -72,6 +53,30 @@ type
    T_Buff_RGBPalette_16  = Array[0..15] of T_Buff_RGB_DESC;
    { для всей палитры VGA  }
    T_Buff_RGBPalette_256 = Array[0..255] of T_Buff_RGB_DESC;
+
+   { Вид цветового блока }
+  Type_Colors_Block = ( CB_Free, CB_Interface, CB_Bitmap );
+
+
+Procedure GetRGBPalette(Index:Integer;var R,G,B:Byte);
+Procedure SetRGBPalette_Array(Index,Count:Integer;var RGB);
+Procedure GetRGBPalette_Array(Index,Count:Integer;var RGB);
+procedure Flush_Colors_Space;
+procedure Flush_Colors_Block( N : byte  );
+function Get_Count_Of_Free_Blocks : byte;
+function Get_Free_Block_Number : shortint;
+procedure Clear_Colors_Block(N:byte);
+procedure Colors_Block_Change_Type(N:byte; New_Type : Type_Colors_Block);
+function Colors_Block_Is_Available(N: byte) : boolean;
+procedure  Clear_Colors_Space;
+function Initialize_U2564BPP : boolean;
+function Is_Mode_256_Colors : boolean;
+procedure DIRTY_TESTS;
+
+
+implementation
+
+uses crt, graph, dos;
 
 const
    { Константный блок первых 16 цветов палитры VGA  }
@@ -102,19 +107,22 @@ var
   Buff_RGBPalette_256: Array[0..255] of T_Buff_RGB_DESC;
 
 type
+
   { Тип данных для цветового блока.
-    Цветовой блок всегда содержит 16 цветов. }
-  T_Color_Block = record
+    Цветовой блок всегда содержит 16 цветов.
+    Запись с Вариантами. }
+  T_Colors_Block = record
      Palette : T_Buff_RGBPalette_16; { палитра из 16-и цветов }
      Colors_Offset : byte;
-     { тип блока, интерфейсный или картинка BitMap }
-     Case CB_Type:   ( CB_Interface, CB_Bitmap ) of
-      CB_Interface : (   );
-      CB_Bitmap :    (   );
+     { тип блока, свободный, интерфейсный или картинка BitMap }
+     Case CB_Type:   Type_Colors_Block  of
+       CB_Free      : (   );
+       CB_Interface : (   );
+       CB_Bitmap    : (   );
   end;
 
   { Тип данных для всего цветового пространства 256-цветов }
-  T_Colors_Space = array [ 0..255 ] of T_Color_Block;
+  T_Colors_Space = array [ 0..255 ] of T_Colors_Block;
 
 var
   Colors_Space : T_Colors_Space;
@@ -196,12 +204,46 @@ begin
                        Colors_Space[N].Palette );
 end;
 
+{ Возвращает число свободных блоков.
+  Если свободных нет - возвращает ноль - 0  }
+function Get_Count_Of_Free_Blocks : byte;
+var
+  i: integer;
+  cnt : integer;
+begin
+  cnt := 0;
+  for i:=0 to 15 do
+    if Colors_Space[i].CB_Type = CB_Free then
+      inc( cnt );
+  Get_Count_Of_Free_Blocks := cnt;
+end;
+
+{ Получить номер следующего свободного блока.
+  Если свободного блока нет - возвращет -1 }
+function Get_Free_Block_Number : shortint;
+var
+  i: integer;
+begin
+  for i:= 0 to 15 do
+    if Colors_Space[i].CB_Type = CB_Free then
+      begin
+      Get_Free_Block_Number := i;
+      exit;
+      end;
+  Get_Free_Block_Number := -1;
+end;
+
+
+
 { Очищает указанный цветовой блок, устанавливая на всех индексированных
-  цветах нейтральный серый }
+  цветах нейтральный серый и помечая его как свододный CB_Free
+}
 procedure Clear_Colors_Block(N:byte);
 var
  i,j: integer;
 begin
+  Colors_Space[N].CB_Type := CB_Free;
+  Colors_Space[N].Colors_Offset := N*16;
   for j:=0 to 15 do
     begin
     Colors_Space[N].Palette[j].R := $2A;
@@ -209,6 +251,22 @@ begin
     Colors_Space[N].Palette[j].B := $2A;
     end;
   Flush_Colors_Block(N);
+end;
+
+{ Изменяет тип цветового блока N на новый.
+  Не трогает текущую палитру указанного блока.}
+procedure Colors_Block_Change_Type(N:byte; New_Type : Type_Colors_Block);
+begin
+   Colors_Space[N].CB_Type := new_type;
+   Colors_Space[N].Colors_Offset := N*16;
+end;
+
+{
+ Возвращает истину если указанный цветовой блок свободен
+}
+function Colors_Block_Is_Available(N: byte) : boolean;
+begin
+   Colors_Block_Is_Available := Colors_Space[N].CB_Type = CB_Free;
 end;
 
 
@@ -230,11 +288,11 @@ begin
   Colors_Space[0].CB_Type := CB_Interface;
   Colors_Space[0].Colors_Offset:= 0;
 
-  { проиницализируем палитры остальных 15 блоков и проиницализируем их поля,
-    а цвета заполним нейтральным серым цветом }
+  { проиницализируем палитры остальных 15 блоков нейтральным серым цветом,
+    и пометим записи всех 15-ти блоков как свободные }
   for i:=1 to 15 do
     begin
-    Colors_Space[0].CB_Type := CB_Interface;
+    Colors_Space[0].CB_Type := CB_Free;
     Colors_Space[0].Colors_Offset := i*16;
     for j:=0 to 15 do
       begin
