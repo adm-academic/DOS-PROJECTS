@@ -24,6 +24,8 @@ begin
     MOV AX, 0012h ;
     INT 10h
   end;
+
+
   { вывод строки }
   writeS(s);
   readln;
