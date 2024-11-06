@@ -289,11 +289,16 @@ begin
    m:=0;
    initgraph(d,m,'SPRUCHRS');
 
+
    DRAW_16COLORS;
    readln;
-   DIRTY_TESTS;
-
+   Clear_Colors_Block(0);
    readln;
+
+   Initialize_U2564BPP;
+   DIRTY_TESTS;
+   readln;
+
    closegraph;
    halt(0);
    { =======================================================  }

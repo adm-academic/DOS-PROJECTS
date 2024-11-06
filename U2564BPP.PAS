@@ -1,7 +1,6 @@
 unit U2564BPP;
 {
   ТОЛЬКО ДЛЯ ВИДЕОРЕЖИМОВ 256-ЦВЕТОВ !!!
-  ТОЛЬКО Real Mode !!!
 
   Модуль который позволяет загружать в память от 1 до 15
   разных палитровых 16-цветных BMP-изображений.
@@ -22,6 +21,7 @@ unit U2564BPP;
      @ Константная палитра 16 цветов,
        используя встроенные цвета BP7 BGI  +
      @ Очистка всей палитры +
+     @ Очистка одного цветового блока +
      @ Зарезервировать блок N для интерфейса ---
      @ Зарезервировать блок N для изображения ---
      @ Загрузить 4bpp Bitmap в блок N,
@@ -35,7 +35,7 @@ unit U2564BPP;
      @ Заменить Bitmap в блоке N на новый ---
      @ Для любого блока N получить его 16-цветную палитру ---
      @ Для переданного 256-индекса вернуть его RGB ---
-     @ MapFrom4bppTo256 (плюс N блока). Для известного блока
+     @ MapFrom4bppTo256 (плюс N блока). Для идекса ИЗ известного блока
        получить абсолютный идекс по относительному.
      @ MapFrom256To4bb - для абсолютного индекса получить ---
        N цветового блока и относительный индекс,
@@ -46,10 +46,14 @@ unit U2564BPP;
 
 }
 interface
-
 procedure DIRTY_TESTS;
-Procedure SetRGBPalette_Array( Index,Count:Integer;var RGB );
+
+
+function  Initialize_U2564BPP : boolean;
+procedure Clear_Colors_Space;
+procedure Clear_Colors_Block(N:byte);
 Procedure GetRGBPalette( Index:Integer;var R,G,B:Byte );
+Procedure SetRGBPalette_Array( Index,Count:Integer;var RGB );
 Procedure GetRGBPalette_Array( Index,Count:Integer;var RGB );
 
 
@@ -57,19 +61,20 @@ implementation
 
 uses crt, graph, dos;
 
-const
-  x=1;
 
 type
-   T_Buff_RGB_DESC = record
+   T_Buff_RGB_DESC = record { для единичного элмента палитры VGA  }
                     R: byte;
                     G: byte;
                     B: byte;
                    end;
+   { для 16-цветного блока палитры VGA  }
    T_Buff_RGBPalette_16  = Array[0..15] of T_Buff_RGB_DESC;
+   { для всей палитры VGA  }
    T_Buff_RGBPalette_256 = Array[0..255] of T_Buff_RGB_DESC;
 
 const
+   { Константный блок первых 16 цветов палитры VGA  }
    Default_VGA_Palette : T_Buff_RGBPAlette_16  =
    (
     {0} {Black}       ( R:$00; G:$00; B:$00 ),
@@ -92,17 +97,29 @@ const
 
 
 var
+  { буферы для чтения-записи палитры VGA }
   Buff_RGBPalette_16: Array[0..15] of T_Buff_RGB_DESC;
   Buff_RGBPalette_256: Array[0..255] of T_Buff_RGB_DESC;
 
 type
-  { Цветовой блок всегда содержит 16 цветов. }
+  { Тип данных для цветового блока.
+    Цветовой блок всегда содержит 16 цветов. }
   T_Color_Block = record
      Palette : T_Buff_RGBPalette_16; { палитра из 16-и цветов }
-     Case CB_Type: ( CB_Interface, CB_Bitmap ) of
+     Colors_Offset : byte;
+     { тип блока, интерфейсный или картинка BitMap }
+     Case CB_Type:   ( CB_Interface, CB_Bitmap ) of
       CB_Interface : (   );
-      CB_Bitmap : ( Bitmap_name : string );
+      CB_Bitmap :    (   );
   end;
+
+  { Тип данных для всего цветового пространства 256-цветов }
+  T_Colors_Space = array [ 0..255 ] of T_Color_Block;
+
+var
+  Colors_Space : T_Colors_Space;
+  U2564BPP_Initialized : boolean;
+
 {
 ===========================================================================
 }
@@ -150,295 +167,129 @@ end;
 ======================================================================
 }
 
+{ Выгружает всё цветовое пространтсво в регистры DAC видеоадаптера VGA }
+procedure Flush_Colors_Space;
+var
+  index_CB, index_color : integer;
+begin
+   { переложим все цвета из цветового пространства в буфер VGA  }
+   for index_CB:=0 to 15 do
+     begin
+     for index_color := index_CB*16 to index_CB*16 + 15 do
+       begin
+       Buff_RGBPalette_256[ index_color ].R :=
+               Colors_Space[ index_color ].Palette[ index_CB ].R;
+       end;
+     end;
+   { выгрузим буфер VGA в регистры DAC видеоадаптера  }
+   SetRGBPalette_Array( 0, 256, Buff_RGBPalette_256   );
+end;
+
+
+{ Выгружает указанный цветовой блок в регистры DAC видеоадаптера VGA }
+procedure Flush_Colors_Block( N : byte  );
+var
+  i,j : integer;
+begin
+  SetRGBPalette_Array( Colors_Space[N].Colors_Offset,
+                       16,
+                       Colors_Space[N].Palette );
+end;
+
+{ Очищает указанный цветовой блок, устанавливая на всех индексированных
+  цветах нейтральный серый }
+procedure Clear_Colors_Block(N:byte);
+var
+ i,j: integer;
+begin
+  for j:=0 to 15 do
+    begin
+    Colors_Space[N].Palette[j].R := $2A;
+    Colors_Space[N].Palette[j].G := $2A;
+    Colors_Space[N].Palette[j].B := $2A;
+    end;
+  Flush_Colors_Block(N);
+end;
+
+
 { сбрасывает всё цветовое пространство 256 цветов
   в начальное состояние }
-procedure  Clear_Color_Space;
+procedure  Clear_Colors_Space;
 var
  i,j : integer;
  gray_fill: T_Buff_RGB_DESC;
 begin
-  { первые 16 цветов возьмём из константной таблицы цветов VGA }
-  for i:=0 to 15 do
+  { всего в цветовом пространтсве 16 блоков,
+    нулевой блок заполним из константной таблицы цветов VGA }
+  for j:=0 to 15 do
     begin
-      Buff_RGBPalette_256[i]:= Default_VGA_Palette[i];
+    Colors_Space[0].Palette[j].R := Default_VGA_Palette[j].R;
+    Colors_Space[0].Palette[j].G := Default_VGA_Palette[j].G;
+    Colors_Space[0].Palette[j].B := Default_VGA_Palette[j].B;
     end;
+  Colors_Space[0].CB_Type := CB_Interface;
+  Colors_Space[0].Colors_Offset:= 0;
 
-  { остальные заполним нейтральным серым цветом }
-  gray_fill.R:=$2A; gray_fill.G:=$2A; gray_fill.B:=$2A;
-  for i:=16 to 255 do
-    Buff_RGBPalette_256[i]:=gray_fill;
-
-  SetRGBPalette_Array( 0, 256, Buff_RGBPalette_256 );
-
+  { проиницализируем палитры остальных 15 блоков и проиницализируем их поля,
+    а цвета заполним нейтральным серым цветом }
+  for i:=1 to 15 do
+    begin
+    Colors_Space[0].CB_Type := CB_Interface;
+    Colors_Space[0].Colors_Offset := i*16;
+    for j:=0 to 15 do
+      begin
+        Colors_Space[i].Palette[j].R := $2A;
+        Colors_Space[i].Palette[j].G := $2A;
+        Colors_Space[i].Palette[j].B := $2A;
+      end;
+    end;
+  { применим внесенные изменения к регистрам VGA }
+  Flush_Colors_Space;
 end;
 
-{ ############################################################## }
-type
- T_BitMapFileHeader = record   { первый заголовок BMP }
-   fType : array [0..1] of char;
-   fSize : longint;
-   fReserved_1 : word;
-   fReserved_2 : word;
-   fOffsetBits : longint;
- end;
 
- T_BitMapInfoHeader = record { второй заголовок BMP }
-  fSize     :  longint;
-  fWIdth    :  longint;
-  fHeight   :  longint;
-  fPlanes   :  word;
-  fBitCount :  word;
-  fCompression : longint;
-  fSizeImage   : longint;
-  fXpelsPerMetr: longint;
-  fYpelsPerMetr: longint;
-  fColorsUsed  : longint;
-  fColorsImportant : longint;
- end;
-
- T_BGRN_Palette_Element = record { элемент палитры BMP }
-     B : byte;
-     G : byte;
-     R : byte;
-     N : byte; { must be null value }
- end;
- P_BGRN_Palette_Element = ^T_BGRN_Palette_Element; { указатель на
-                                        элемент палитры, нужен для
-                                        доступа к элементам палитры
-                                        по типу массива }
-
-
-
- procedure paint_4bpp_BMP_directly( filename:string;
-                                    X,Y: integer );
- var
-  BitMapFileHeader : T_BitMapFileHeader;  { заголовок 1  }
-  BitMapInfoHeader : T_BitMapInfoHeader;  { заголовок 2  }
-  BGRN_Palette_Element : T_BGRN_Palette_Element; { элемент палитры }
-  f : file;
-  t : text;
-  i,j: integer;
-  palette_size, pixels_size, data_size : longint;
-  foffset_palette, foffset_pixels: longint;
-  real_start_X, real_start_Y : integer;
-  xx, yy : integer;
-
-  pair_pixels, high_pixel, low_pixel : byte;
-
- begin
-   assign(f, filename );
-   reset(f,1);
-
-   blockread(f,BitMapFileHeader,sizeof(BitMapFileHeader));
-   blockread(f,BitMapInfoHeader,sizeof(BitMapInfoHeader));
-   if ( BitMapFileHeader.fType[0] <> 'B' ) and
-      ( BitMapFileHeader.fType[1] <> 'M' ) then
-        begin
-          closegraph;
-          writeln('File format must be BMP');
-          halt( 0 );
-        end;
-   if ( BitMapInfoHeader.fBitCount <> 4 ) then
+{ Выполняет некоторые проверки параметров ОС и видеорежима,
+  а также провоидит инициализацию модуля.
+  В некоторых случаях выдаёт сообщение об ошибке и завершает
+  объемлющую программу.
+  Если инициализация успешна - возвращает Истину.  }
+function Initialize_U2564BPP : boolean;
+begin
+  if GraphResult <> GrOk then
     begin
-      closegraph;
-      writeln('File BPP Depth must be equal 4 (that means be 16 colors)!' );
-      halt( 0 );
-    end;
-   if ( BitMapInfoHeader.fColorsUsed <> 0  ) and
-      ( BitMapInfoHeader.fColorsUsed <> 16 ) then
+    Initialize_U2564BPP := False;
+    closegraph;
+    Writeln('Initialize U2564BPP Error - Graph Mode Not Available !');
+    Writeln('Program will be interrupted!');
+    halt( 5 );
+    end
+  else
+    begin
+    if GetMaxColor<>255 then
       begin
-        closegraph;
-        writeln('File ColorsUsed Parameter Must be 0 or 16 !' );
-        halt( 0 );
-      end;
-   if ( BitMapInfoHeader.fCompression <>0  ) then
-     begin
-       closegraph;
-       writeln('File Must be uncompressed!');
-       halt ( 0 );
-     end;
-   if ( filesize(f) <> BitMapFileHeader.fSize ) then
-     begin
-       closegraph;
-       writeln(' Bad file sizes !');
-       halt( 0 );
-     end;
-
-    palette_size := 16 * 4;
-    foffset_palette:= $36; { смещение палитры в файле известно заранее  }
-    foffset_pixels := foffset_palette + palette_size; { вычислим смещение
-                                                  массива пикселей изображения  }
-    pixels_size := BitMapFileHeader.fSize - foffset_pixels; { размер блока
-                                             данных с пикселями картинки  }
-    data_size := palette_size + pixels_size;
-    if ( filesize(f) <>
-       (sizeof(BitMapFileHeader) + sizeof(BitMapInfoHeader) + data_size) )
-       then
-    begin
-       closegraph;
-       writeln('Check result sizes NOT PASSED!');
-       halt( 0 );
-    end;
-
-    { === читаем из файла по одной штуке элементы палитры
-      и применяем их сразу для видеопдаптера === }
-    for i:=0 to 15 do
-    begin
-      blockread(f, BGRN_Palette_Element, sizeof(BGRN_Palette_Element) );
-      SetRGBPalette( i,
-                        integer( BGRN_Palette_Element.R shr 2 ),
-                        integer( BGRN_Palette_Element.G shr 2 ),
-                        integer( BGRN_Palette_Element.B shr 2 )
-                    );
-    end;
-
-    { === по пикселям рисуем изображение === }
-    { пиксели запакованы по два штуки в один байт  }
-    seek(f, foffset_pixels); { переходим на начало массива пикселей  }
-    real_start_X := X;
-    { изображение выводится снизу вверх, вычисли нижнюю координату
-      начала изображения }
-    real_start_Y := Y + BitMapInfoHeader.fHeight - 1;
-
-    { собственно в двух циклах выводим изображение по-пиксельно  }
-    { ### здесь нужен блиттинг или хотя-бы процедура Move ### }
-    for yy:=real_start_Y downto Y do { по Y выводим снизу-вверх  }
-    begin
-      xx := 0; { по X выводим хитро, так как пиксели запакованы
-                 по 2 штуки в каждый байт }
-      repeat
-
-         blockread( f, pair_pixels, 1 ); { прочтём запакованую пару пикселей}
-
-         high_pixel := ( pair_pixels and $F0 ) shr 4; { возьём левый пиксель}
-         putpixel( xx,yy,word( high_pixel ) ); { выведем его на дисплей}
-         xx := xx + 1; { прирастим счётчик xx  }
-
-         { если xx достииг правого края - то брякнем цикл }
-         if xx >=  BitMapInfoHeader.fWidth-1 then
-           break;
-
-         { возьмём правый пиксель }
-         low_pixel :=  pair_pixels and $0F;
-         putpixel( xx,yy,word( low_pixel ) );
-         xx:= xx + 1;
-
-      until xx >= BitMapInfoHeader.fWidth-1 ;
-    end;
-
-    close(f);
-
- end;
-
-
-  procedure paint_8bpp_BMP_directly( filename:string;
-                                    X,Y: integer );
- var
-  BitMapFileHeader : T_BitMapFileHeader;  { заголовок 1  }
-  BitMapInfoHeader : T_BitMapInfoHeader;  { заголовок 2  }
-  BGRN_Palette_Element : T_BGRN_Palette_Element; { элемент палитры }
-  f : file;
-  t : text;
-  i,j: integer;
-  palette_size, pixels_size, data_size : longint;
-  foffset_palette, foffset_pixels: longint;
-  real_start_X, real_start_Y : integer;
-  xx, yy : integer;
-
-  pixel : byte;
-
- begin
-   assign(f, filename );
-   reset(f,1);
-
-   blockread(f,BitMapFileHeader,sizeof(BitMapFileHeader));
-   blockread(f,BitMapInfoHeader,sizeof(BitMapInfoHeader));
-   if ( BitMapFileHeader.fType[0] <> 'B' ) and
-      ( BitMapFileHeader.fType[1] <> 'M' ) then
-        begin
-          closegraph;
-          writeln('File format must be BMP');
-          halt( 0 );
-        end;
-   if ( BitMapInfoHeader.fBitCount <> 8 ) then
-    begin
+      Initialize_U2564BPP := False;
       closegraph;
-      writeln('File BPP Depth must be equal 8 (that means be 256 colors)!' );
-      halt( 0 );
-    end;
-   if ( BitMapInfoHeader.fColorsUsed <> 0  ) and
-      ( BitMapInfoHeader.fColorsUsed <> 256 ) then
+      Writeln('Initialize U2563BPP Error - Graph not in 256-colors Mode !');
+      Writeln('Program will be interrupted!');
+      halt( 5 );
+      end
+    else
       begin
-        closegraph;
-        writeln('File ColorsUsed Parameter Must be 0 or 16 !' );
-        halt( 0 );
+      Initialize_U2564BPP := True;
+      Clear_Colors_Space;
+      exit;
       end;
-   if ( BitMapInfoHeader.fCompression <>0  ) then
-     begin
-       closegraph;
-       writeln('File Must be uncompressed!');
-       halt ( 0 );
-     end;
-   if ( filesize(f) <> BitMapFileHeader.fSize ) then
-     begin
-       closegraph;
-       writeln(' Bad file sizes !');
-       halt( 0 );
-     end;
-
-    palette_size := 256 * 4;
-    foffset_palette:= $36; { смещение палитры в файле известно заранее  }
-    foffset_pixels := foffset_palette + palette_size; { вычислим смещение
-                                                  массива пикселей изображения  }
-    pixels_size := BitMapFileHeader.fSize - foffset_pixels; { размер блока
-                                             данных с пикселями картинки  }
-    data_size := palette_size + pixels_size;
-    if ( filesize(f) <>
-       (sizeof(BitMapFileHeader) + sizeof(BitMapInfoHeader) + data_size) )
-       then
-    begin
-       closegraph;
-       writeln('Check result sizes NOT PASSED!');
-       halt( 0 );
     end;
+end;
 
-    { === читаем из файла по одной штуке элементы палитры
-      и применяем их сразу для видеопдаптера === }
-    for i:=0 to 255 do
-    begin
-      blockread(f, BGRN_Palette_Element, sizeof(BGRN_Palette_Element) );
-      SetRGBPalette( i,
-                        integer( BGRN_Palette_Element.R shr 2 ),
-                        integer( BGRN_Palette_Element.G shr 2 ),
-                        integer( BGRN_Palette_Element.B shr 2 )
-                    );
-    end;
-
-    { === по пикселям рисуем изображение === }
-    { пиксели по ОДНОМУ байту }
-    seek(f, foffset_pixels); { переходим на начало массива пикселей  }
-    real_start_X := X;
-    { изображение выводится снизу вверх, вычисли нижнюю координату
-      начала изображения }
-    real_start_Y := Y + BitMapInfoHeader.fHeight - 1;
-
-    { собственно в двух циклах выводим изображение по-пиксельно  }
-    { ### здесь нужен блиттинг или хотя-бы процедура Move ### }
-    for yy:=real_start_Y downto Y do { по Y выводим снизу-вверх  }
-    for xx:=X to BitMapInfoHeader.fWidth-1 do
-    begin
-         blockread( f, pixel, 1 ); { прочтём пиксель }
-         putpixel( xx, yy, word( pixel ) ); { выведем его на дисплей}
-    end;
-
-    close(f);
-
- end;
 
 function Is_Mode_256_Colors : boolean;
 begin
    Is_Mode_256_Colors := ( GetMaxColor = 255 );
 end;
+
+
+{$I BMP.INC} { Include File With Graph Module BMP code }
 
 
 procedure DIRTY_TESTS;
@@ -456,28 +307,28 @@ begin
  end;
 
 
- Clear_Color_Space;
+ Clear_Colors_Space;
  cleardevice;
  paint_8bpp_BMP_directly('cenbibl.bmp',0,0);
  readln;
 
- Clear_Color_Space;
+ Clear_Colors_Space;
  cleardevice;
  paint_4bpp_BMP_directly('cenbibl2.bmp',0,0);
  readln;
 
- Clear_Color_Space;
+ Clear_Colors_Space;
  cleardevice;
  paint_8bpp_BMP_directly('leo.bmp',0,0);
  readln;
 
- Clear_Color_Space;
+ Clear_Colors_Space;
  cleardevice;
  paint_4bpp_BMP_directly('leo2.bmp',0,0);
 
 
-
 end;
+
 
 
 
@@ -492,6 +343,7 @@ begin
      Writeln('ATTENTION ! Unit U2564BPP runs in "REAL MODE" !');
    {$ENDIF}
    Writeln('Press ENTER for continue loading program !');
+   U2564BPP_Initialized := False;
    readln;
 end.
 
